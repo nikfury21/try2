@@ -90,26 +90,26 @@ def get_video_duration_seconds(video_id: str) -> int:
 
 
 def download_audio_to_webm(video_id: str) -> str:
-    """Use pytubefix to get direct audio and download to local .webm"""
     url = f"https://www.youtube.com/watch?v={video_id}"
+    for attempt in range(3):  # Retry 3 times
+        try:
+            kwargs = {"client": "WEB"}
+            if os.path.exists(TOKENS_PATH):
+                kwargs.update(dict(use_oauth=True, allow_oauth_cache=True))
+            yt = YouTube(url, **kwargs)
+            audio_stream = yt.streams.filter(only_audio=True).order_by("abr").desc().first()
+            if not audio_stream:
+                raise Exception("No audio stream found")
+            out_path = os.path.join(DOWNLOAD_DIR, f"{video_id}_audio.webm")
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            audio_stream.download(output_path=out_path)
+            return out_path
+        except Exception as e:
+            print(f"Download attempt {attempt+1} failed: {e}")
+            if attempt == 2:
+                raise
 
-    kwargs = {}
-    if os.path.exists(TOKENS_PATH):
-        kwargs.update(dict(use_oauth=True, allow_oauth_cache=True))
-
-    yt = YouTube(url, **kwargs)
-
-    audio_stream = yt.streams.filter(only_audio=True).order_by("abr").desc().first()
-    if not audio_stream:
-        raise Exception("No audio stream found")
-
-    out_path = os.path.join(DOWNLOAD_DIR, f"{video_id}_audio.webm")
-    # Ensure we overwrite if file exists from old run
-    if os.path.exists(out_path):
-        os.remove(out_path)
-
-    audio_stream.download(output_path=out_path)
-    return out_path
 
 
 def convert_webm_to_mp3(input_path: str, video_id: str) -> str:
@@ -221,4 +221,5 @@ threading.Thread(target=run_flask, daemon=True).start()
 
 print("🎵 Bot running...")
 app.run()
+
 
