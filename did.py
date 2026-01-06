@@ -1,35 +1,23 @@
 import os
+import threading
 import subprocess
 import requests
 import isodate
+from flask import Flask
 from pyrogram import Client, filters
 from pytubefix import YouTube
-
-
-# ================= CONFIG =================
 
 BOT_TOKEN = "8498045631:AAGy7G45gS4TX69pI1KE8NKrKJ2ToeGi2dg"
 API_ID = 23679210
 API_HASH = "de1030f3e6fa64f9d41540b1f6f53b7a"
-
-# YouTube Data API v3 key
 YOUTUBE_API_KEY = "AIzaSyAgu3cgcmbTTnbovQsBmYKefcZ_rgcmLPM"
 
-# Base dir = folder where this script is
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Downloads dir (relative to script, works on Render & Windows)
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-# OPTIONAL: reuse OAuth tokens.json (same as API)
 TOKENS_PATH = os.path.join(BASE_DIR, "tokens.json")
 
-# =========================================
-
-
 def search_youtube(query: str) -> str:
-    """Search YouTube using official API and return first videoId"""
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
         "part": "snippet",
@@ -38,19 +26,14 @@ def search_youtube(query: str) -> str:
         "maxResults": 1,
         "key": YOUTUBE_API_KEY,
     }
-
     r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
-
     items = r.json().get("items")
     if not items:
         raise Exception("No results")
-
     return items[0]["id"]["videoId"]
 
-
 def get_video_duration_seconds(video_id: str) -> int:
-    """Get video duration in seconds using YouTube Data API"""
     url = "https://www.googleapis.com/youtube/v3/videos"
     params = {
         "part": "contentDetails",
@@ -65,39 +48,26 @@ def get_video_duration_seconds(video_id: str) -> int:
     iso_duration = items[0]["contentDetails"]["duration"]
     return int(isodate.parse_duration(iso_duration).total_seconds())
 
-
 def download_audio_to_webm(video_id: str) -> str:
-    """Use pytubefix to get direct audio and download to local .webm"""
     url = f"https://www.youtube.com/watch?v={video_id}"
-
     kwargs = {}
     if os.path.exists(TOKENS_PATH):
         kwargs.update(dict(use_oauth=True, allow_oauth_cache=True))
-
     yt = YouTube(url, **kwargs)
-
     audio_stream = yt.streams.filter(only_audio=True).order_by("abr").desc().first()
     if not audio_stream:
         raise Exception("No audio stream found")
-
     out_path = os.path.join(DOWNLOAD_DIR, f"{video_id}_audio.webm")
-    # Ensure we overwrite if file exists from old run
     if os.path.exists(out_path):
         os.remove(out_path)
-
     audio_stream.download(output_path=out_path)
     return out_path
 
-
 def convert_webm_to_mp3(input_path: str, video_id: str) -> str:
-    """Convert local webm to mp3 as fast as possible"""
     output = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
     print("Converting:", input_path, "->", output)
-
-    # Safety: ensure input file really exists before calling ffmpeg
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
-
     cmd = [
         "ffmpeg",
         "-y",
@@ -109,28 +79,24 @@ def convert_webm_to_mp3(input_path: str, video_id: str) -> str:
         "-loglevel", "error",
         output,
     ]
-
     subprocess.run(cmd, check=True)
     return output
 
-
-app = Client(
+app_bot = Client(
     "music_bot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
 )
 
-
-@app.on_message(filters.command("start"))
+@app_bot.on_message(filters.command("start"))
 async def start(_, msg):
     await msg.reply(
         "🎵 Music Bot\n\nUse:\n/song <song name>",
         parse_mode=None,
     )
 
-
-@app.on_message(filters.command("song"))
+@app_bot.on_message(filters.command("song"))
 async def song(_, msg):
     if len(msg.command) < 2:
         return await msg.reply(
@@ -146,7 +112,6 @@ async def song(_, msg):
     except Exception:
         return await status.edit("❌ No results found", parse_mode=None)
 
-    # Reject too-long videos (e.g. > 10 minutes)
     try:
         dur = get_video_duration_seconds(video_id)
         if dur > 600:
@@ -182,7 +147,6 @@ async def song(_, msg):
             title=query,
         )
     finally:
-        # Clean up files
         for path in (webm_path, mp3_file):
             if path and os.path.exists(path):
                 try:
@@ -190,8 +154,24 @@ async def song(_, msg):
                 except PermissionError:
                     pass
 
-    await status.delete()
+# --- Flask app ---
 
+flask_app = Flask(__name__)
 
-print("🎵 Bot running...")
-app.run()
+@flask_app.route("/")
+def index():
+    return "Bot + Flask running"
+
+def run_bot():
+    print("🎵 Bot running...")
+    app_bot.run()
+
+# Entry point for Render
+if __name__ == "__main__":
+    # Start bot in background thread
+    t = threading.Thread(target=run_bot, daemon=True)
+    t.start()
+
+    # Start Flask on 0.0.0.0 and Render port
+    port = int(os.environ.get("PORT", "10000"))
+    flask_app.run(host="0.0.0.0", port=port)
