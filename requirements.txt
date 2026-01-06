@@ -3,3 +3,4 @@ tgcrypto==1.2.5
 pytubefix==10.3.6
 requests==2.32.3
 isodate==0.6.1
+Flask==3.0.2
