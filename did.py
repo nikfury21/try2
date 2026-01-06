@@ -4,7 +4,7 @@ import subprocess
 import requests
 import isodate
 from flask import Flask
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pytubefix import YouTube
 
 BOT_TOKEN = "8498045631:AAGy7G45gS4TX69pI1KE8NKrKJ2ToeGi2dg"
@@ -16,6 +16,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 TOKENS_PATH = os.path.join(BASE_DIR, "tokens.json")
+
 
 def search_youtube(query: str) -> str:
     url = "https://www.googleapis.com/youtube/v3/search"
@@ -33,6 +34,7 @@ def search_youtube(query: str) -> str:
         raise Exception("No results")
     return items[0]["id"]["videoId"]
 
+
 def get_video_duration_seconds(video_id: str) -> int:
     url = "https://www.googleapis.com/youtube/v3/videos"
     params = {
@@ -47,6 +49,7 @@ def get_video_duration_seconds(video_id: str) -> int:
         return 0
     iso_duration = items[0]["contentDetails"]["duration"]
     return int(isodate.parse_duration(iso_duration).total_seconds())
+
 
 def download_audio_to_webm(video_id: str) -> str:
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -63,6 +66,7 @@ def download_audio_to_webm(video_id: str) -> str:
     audio_stream.download(output_path=out_path)
     return out_path
 
+
 def convert_webm_to_mp3(input_path: str, video_id: str) -> str:
     output = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
     print("Converting:", input_path, "->", output)
@@ -71,16 +75,22 @@ def convert_webm_to_mp3(input_path: str, video_id: str) -> str:
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", input_path,
+        "-i",
+        input_path,
         "-vn",
-        "-acodec", "libmp3lame",
-        "-b:a", "128k",
-        "-ar", "44100",
-        "-loglevel", "error",
+        "-acodec",
+        "libmp3lame",
+        "-b:a",
+        "128k",
+        "-ar",
+        "44100",
+        "-loglevel",
+        "error",
         output,
     ]
     subprocess.run(cmd, check=True)
     return output
+
 
 app_bot = Client(
     "music_bot",
@@ -89,15 +99,17 @@ app_bot = Client(
     bot_token=BOT_TOKEN,
 )
 
+
 @app_bot.on_message(filters.command("start"))
-async def start(_, msg):
+async def start_cmd(_, msg):
     await msg.reply(
         "🎵 Music Bot\n\nUse:\n/song <song name>",
         parse_mode=None,
     )
 
+
 @app_bot.on_message(filters.command("song"))
-async def song(_, msg):
+async def song_cmd(_, msg):
     if len(msg.command) < 2:
         return await msg.reply(
             "❌ Usage: /song <song name>",
@@ -154,24 +166,34 @@ async def song(_, msg):
                 except PermissionError:
                     pass
 
+
 # --- Flask app ---
 
 flask_app = Flask(__name__)
+
 
 @flask_app.route("/")
 def index():
     return "Bot + Flask running"
 
-def run_bot():
-    print("🎵 Bot running...")
-    app_bot.run()
 
-# Entry point for Render
-if __name__ == "__main__":
-    # Start bot in background thread
-    t = threading.Thread(target=run_bot, daemon=True)
-    t.start()
-
-    # Start Flask on 0.0.0.0 and Render port
+def run_flask():
     port = int(os.environ.get("PORT", "10000"))
     flask_app.run(host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    print("🎵 Bot starting...")
+
+    # Start bot (sync style)
+    app_bot.start()  # connects and begins receiving updates [web:344][web:346]
+
+    # Start Flask in background thread
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
+
+    # Keep the bot running and processing updates
+    idle()  # blocks until you stop the app or container stops [web:341][web:346]
+
+    # On shutdown
+    app_bot.stop()
