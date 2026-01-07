@@ -14,8 +14,8 @@ API_HASH = "de1030f3e6fa64f9d41540b1f6f53b7a"
 YOUTUBE_API_KEY = "AIzaSyAgu3cgcmbTTnbovQsBmYKefcZ_rgcmLPM"
 
 # Render API (separate deployment)
-API_BASE_URL = "https://your-api-name.onrender.com/info/"  # UPDATE THIS
-INTERNAL_API_KEY = "your_internal_api_key_here"  # UPDATE or env
+API_BASE_URL = "https://try-x2ij.onrender.com/info/"  # UPDATE THIS
+INTERNAL_API_KEY = "super_secret_key_12345"  # UPDATE or env
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -117,3 +117,4 @@ threading.Thread(target=run_flask, daemon=True).start()
 
 print("🎵 Bot running...")
 app.run()
+
