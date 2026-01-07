@@ -95,8 +95,8 @@ async def song(_, msg):
     except Exception as e:
         return await status.edit(f"❌ API error: {str(e)}")
 
-    if data.get("status") != "success":
-        return await status.edit("❌ No streams available")
+    if data.get("status") != "success" or not data.get("audio_url"):
+        return await status.edit("❌ No audio stream available")
 
     await status.edit("📤 Sending audio...")
 
@@ -112,9 +112,11 @@ async def song(_, msg):
     finally:
         await status.delete()
 
+
 print("🌐 Starting Flask...")
 threading.Thread(target=run_flask, daemon=True).start()
 
 print("🎵 Bot running...")
 app.run()
+
 
