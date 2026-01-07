@@ -1,7 +1,10 @@
 import os
+import subprocess
 import requests
 import isodate
 from pyrogram import Client, filters
+import threading
+from flask import Flask
 
 # ================= CONFIG =================
 BOT_TOKEN = "8498045631:AAGy7G45gS4TX69pI1KE8NKrKJ2ToeGi2dg"
@@ -10,19 +13,34 @@ API_HASH = "de1030f3e6fa64f9d41540b1f6f53b7a"
 
 YOUTUBE_API_KEY = "AIzaSyAgu3cgcmbTTnbovQsBmYKefcZ_rgcmLPM"
 
-# Your Render API URL and key
-API_BASE_URL = "https://try-x2ij.onrender.com/info/"  # Update this!
-INTERNAL_API_KEY = "super_secret_key_12345"  # Set as env or hardcode securely
+# Render API (separate deployment)
+API_BASE_URL = "https://your-api-name.onrender.com/info/"  # UPDATE THIS
+INTERNAL_API_KEY = "your_internal_api_key_here"  # UPDATE or env
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ================= FLASK =================
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def home():
+    return "Music bot is running", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        use_reloader=False,
+    )
 
 # ================= HELPERS =================
 def search_youtube(query: str) -> str:
     url = "https://www.googleapis.com/youtube/v3/search"
     params = {
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "maxResults": 1,
-        "key": YOUTUBE_API_KEY,
+        "part": "snippet", "q": query, "type": "video",
+        "maxResults": 1, "key": YOUTUBE_API_KEY,
     }
     r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
@@ -33,11 +51,7 @@ def search_youtube(query: str) -> str:
 
 def get_video_duration_seconds(video_id: str) -> int:
     url = "https://www.googleapis.com/youtube/v3/videos"
-    params = {
-        "part": "contentDetails",
-        "id": video_id,
-        "key": YOUTUBE_API_KEY,
-    }
+    params = {"part": "contentDetails", "id": video_id, "key": YOUTUBE_API_KEY}
     r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
     items = r.json().get("items")
@@ -47,19 +61,11 @@ def get_video_duration_seconds(video_id: str) -> int:
     return int(isodate.parse_duration(iso_duration).total_seconds())
 
 # ================= BOT =================
-app = Client(
-    "music_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-)
+app = Client("music_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 @app.on_message(filters.command("start"))
 async def start(_, msg):
-    await msg.reply(
-        "🎵 Music Bot\n\nUse:\n/song <song name>",
-        parse_mode=None,
-    )
+    await msg.reply("🎵 Music Bot\n\nUse:\n/song <song name>")
 
 @app.on_message(filters.command("song"))
 async def song(_, msg):
@@ -75,7 +81,7 @@ async def song(_, msg):
         return await status.edit("❌ No results found")
 
     dur = get_video_duration_seconds(video_id)
-    if dur > 600:  # 10 min max
+    if dur > 600:
         return await status.edit("❌ Video too long (max 10 min)")
 
     await status.edit("📡 Fetching streams...")
@@ -106,6 +112,8 @@ async def song(_, msg):
     finally:
         await status.delete()
 
-if __name__ == "__main__":
-    print("🎵 Bot starting...")
-    app.run()
+print("🌐 Starting Flask...")
+threading.Thread(target=run_flask, daemon=True).start()
+
+print("🎵 Bot running...")
+app.run()
